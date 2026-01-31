@@ -30,9 +30,22 @@ func loadState() state {
 	return s
 }
 
+func loadCommand() command {
+	allArgs := os.Args
+	if len(allArgs) < 2 {
+		fmt.Println("Not enough args")
+		os.Exit(1)
+	}
+	return command{
+		name: allArgs[1],
+		args: allArgs[2:],
+	}
+}
+
 func main() {
 	godotenv.Load()
 	s := loadState()
+	cmd := loadCommand()
 	cmds := commands{
 		commands: map[string]func(*state, command) error{},
 	}
@@ -41,20 +54,11 @@ func main() {
 	cmds.register("reset", handleReset)
 	cmds.register("users", handleListUsers)
 	cmds.register("agg", handleAgg)
-	cmds.register("addfeed", handleAddFeed)
+	cmds.register("addfeed", middlewareLoggedIn(handleAddFeed))
 	cmds.register("feeds", handleListFeeds)
-	cmds.register("follow", handleFollow)
-	cmds.register("following", handleListFollow)
+	cmds.register("follow", middlewareLoggedIn(handleFollow))
+	cmds.register("following", middlewareLoggedIn(handleListFollow))
 
-	allArgs := os.Args
-	if len(allArgs) < 2 {
-		fmt.Println("Not enough args")
-		os.Exit(1)
-	}
-	cmd := command{
-		name: allArgs[1],
-		args: allArgs[2:],
-	}
 	err := cmds.run(&s, cmd)
 	if err != nil {
 		fmt.Println(err)

@@ -68,17 +68,12 @@ func handleAgg(s *state, cmd command) error {
 	return nil
 }
 
-func handleAddFeed(s *state, cmd command) error {
+func handleAddFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 2 {
 		return fmt.Errorf("This command needs feed name and url")
 	}
 
 	ctx := context.Background()
-
-	user, err := s.db.GetUserByName(context.Background(), s.config.CurrentUserName)
-	if err != nil {
-		return err
-	}
 	newUUID, err := uuid.NewUUID()
 	if err != nil {
 		return err
@@ -144,17 +139,12 @@ func handleListFeeds(s *state, cmd command) error {
 	return nil
 }
 
-func handleFollow(s *state, cmd command) error {
+func handleFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 1 {
 		return fmt.Errorf("This command needs a feed url")
 	}
 	ctx := context.Background()
 	feed, err := s.db.GetFeedByUrl(ctx, cmd.args[0])
-	if err != nil {
-		return err
-	}
-
-	user, err := s.db.GetUserByName(ctx, s.config.CurrentUserName)
 	if err != nil {
 		return err
 	}
@@ -180,12 +170,8 @@ func handleFollow(s *state, cmd command) error {
 	return nil
 }
 
-func handleListFollow(s *state, cmd command) error {
+func handleListFollow(s *state, cmd command, user database.User) error {
 	ctx := context.Background()
-	user, err := s.db.GetUserByName(ctx, s.config.CurrentUserName)
-	if err != nil {
-		return err
-	}
 	feeds, err := s.db.GetFeedFollowsForUser(ctx, user.ID)
 	if err != nil {
 		return err
