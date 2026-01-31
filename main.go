@@ -57,6 +57,7 @@ func main() {
 	cmds.register("addfeed", middlewareLoggedIn(handleAddFeed))
 	cmds.register("feeds", handleListFeeds)
 	cmds.register("follow", middlewareLoggedIn(handleFollow))
+	cmds.register("unfollow", middlewareLoggedIn(handleUnfollow))
 	cmds.register("following", middlewareLoggedIn(handleListFollow))
 
 	err := cmds.run(&s, cmd)
