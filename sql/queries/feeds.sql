@@ -8,7 +8,6 @@ SELECT name, url, user_id
 FROM feeds
 LIMIT 1000 OFFSET 0;
 
-
 -- name: GetFeedByName :many
 SELECT *
 FROM feeds WHERE name = $1;
@@ -16,3 +15,11 @@ FROM feeds WHERE name = $1;
 -- name: GetFeedByUrl :one
 SELECT *
 FROM feeds WHERE url = $1;
+
+-- name: GetNextFeedToFetch :one
+SELECT *
+FROM feeds 
+ORDER BY last_fetched_at ASC NULLS FIRST;
+
+-- name: MarkFeedFetched :exec
+UPDATE feeds SET last_fetched_at = $2, updated_at = $3 WHERE id = $1;

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/xml"
 	"fmt"
 	"html"
@@ -60,11 +61,42 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 }
 
 func handleAgg(s *state, cmd command) error {
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("A string that represents a duration is needed")
+	}
+	ctx := context.Background()
+
+	timeBetweenRequests, err := time.ParseDuration(cmd.args[0])
 	if err != nil {
 		return err
 	}
-	fmt.Println(feed)
+	fmt.Printf("Collecting feeds every %s\n\n", timeBetweenRequests.String())
+	ticker := time.NewTicker(timeBetweenRequests)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s, ctx)
+	}
+}
+
+func scrapeFeeds(s *state, ctx context.Context) error {
+	storedFeed, err := s.db.GetNextFeedToFetch(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	s.db.MarkFeedFetched(ctx, database.MarkFeedFetchedParams{
+		ID:            storedFeed.ID,
+		LastFetchedAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:     now,
+	})
+	feed, err := fetchFeed(context.Background(), storedFeed.Url)
+	fmt.Printf("Feed '%s': %s\n", storedFeed.Name, feed.Channel.Title)
+	if len(feed.Channel.Item) == 0 {
+		fmt.Println("  With No feeds")
+		return nil
+	}
+	for i, item := range feed.Channel.Item {
+		fmt.Printf("  - %d | %s\n", i, item.Title)
+	}
 	return nil
 }
 
