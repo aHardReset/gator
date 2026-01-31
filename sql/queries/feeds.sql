@@ -16,6 +16,10 @@ FROM feeds WHERE name = $1;
 SELECT *
 FROM feeds WHERE url = $1;
 
+-- name: GetFeedByID :one
+SELECT *
+FROM feeds WHERE id = $1;
+
 -- name: GetNextFeedToFetch :one
 SELECT *
 FROM feeds 

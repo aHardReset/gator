@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aHardReset/gator/internal/database"
@@ -73,8 +75,59 @@ func handleAgg(s *state, cmd command) error {
 	fmt.Printf("Collecting feeds every %s\n\n", timeBetweenRequests.String())
 	ticker := time.NewTicker(timeBetweenRequests)
 	for ; ; <-ticker.C {
-		scrapeFeeds(s, ctx)
+		if err := scrapeFeeds(s, ctx); err != nil {
+			break
+		}
 	}
+	return err
+}
+
+func tryParse(date string, now time.Time) time.Time {
+	if detected, err := time.Parse(time.Layout, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.ANSIC, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.UnixDate, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RubyDate, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RFC822, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RFC822Z, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RFC850, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RFC1123, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RFC1123Z, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RFC3339, date); err != nil {
+		return detected
+	}
+
+	if detected, err := time.Parse(time.RFC3339Nano, date); err != nil {
+		return detected
+	}
+
+	return now
 }
 
 func scrapeFeeds(s *state, ctx context.Context) error {
@@ -89,13 +142,33 @@ func scrapeFeeds(s *state, ctx context.Context) error {
 		UpdatedAt:     now,
 	})
 	feed, err := fetchFeed(context.Background(), storedFeed.Url)
-	fmt.Printf("Feed '%s': %s\n", storedFeed.Name, feed.Channel.Title)
+	fmt.Printf("Fetching Feed '%s': %s\n", storedFeed.Name, feed.Channel.Title)
 	if len(feed.Channel.Item) == 0 {
 		fmt.Println("  With No feeds")
 		return nil
 	}
-	for i, item := range feed.Channel.Item {
-		fmt.Printf("  - %d | %s\n", i, item.Title)
+	for _, item := range feed.Channel.Item {
+		newUUID, err := uuid.NewUUID()
+		if err != nil {
+			return err
+		}
+		now := time.Now()
+		_, err = s.db.CreatePost(ctx, database.CreatePostParams{
+			ID:          newUUID,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: sql.NullString{String: item.Description},
+			PublishedAt: tryParse(item.PubDate, now),
+			FeedID:      storedFeed.ID,
+		})
+
+		if err != nil {
+			if !strings.Contains(err.Error(), "duplicate key value") {
+				fmt.Println(err)
+			}
+		}
 	}
 	return nil
 }
@@ -242,5 +315,52 @@ func handleListFollow(s *state, cmd command, user database.User) error {
 	for _, feed := range feeds {
 		fmt.Printf("  - %s\n", feed.FeedName)
 	}
+	return nil
+}
+
+func handleBrowse(s *state, cmd command, user database.User) error {
+	limit := int32(2)
+	if len(cmd.args) > 0 {
+		userLimit, err := strconv.Atoi(cmd.args[0])
+		if err != nil {
+			return err
+		}
+		limit = int32(userLimit)
+
+	}
+
+	ctx := context.Background()
+	posts, err := s.db.GetPostsByUser(ctx, database.GetPostsByUserParams{
+		Limit:  limit,
+		UserID: user.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	feedsFromPosts := map[uuid.UUID]database.Feed{}
+	fmt.Println("===== Gator Post ======")
+	for _, post := range posts {
+		if _, ok := feedsFromPosts[post.FeedID]; !ok {
+			feedFromDb, err := s.db.GetFeedByID(ctx, post.FeedID)
+			if err != nil {
+				return err
+			}
+			feedsFromPosts[post.FeedID] = feedFromDb
+		}
+
+		feed := feedsFromPosts[post.FeedID]
+
+		fmt.Printf("'%s' Published '%s' at '%s'\n", feed.Name, post.Title, post.PublishedAt)
+		desc := post.Description
+		if desc.Valid {
+			fmt.Printf("  - %s\n", desc.String)
+		}
+		fmt.Printf("  - See More: %s\n", post.Url)
+		fmt.Println("-----------------------")
+
+	}
+	fmt.Println("=====+++++++++++++=====")
+
 	return nil
 }
